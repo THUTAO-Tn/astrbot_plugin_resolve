@@ -1,10 +1,10 @@
 name: astrbot_plugin_resolve
 display_name: 多平台视频解析
-short_desc: B站原画合并 + 抖音/快手/小红书等聚合解析，令牌获取视频与 MP3
-desc: 移植自 GF 视频解析插件：发送 B站/抖音/快手/小红书/微博/西瓜等视频链接即可解析；B站走官方接口与 DASH 原画 ffmpeg 合并，不降分辨率/帧率；解析后回复 v:/a: 令牌获取原视频、图集与音频文件，每个按钮每条解析只能用一次。
+short_desc: 解析视频
+desc: 视频解析插件
 version: v1.0.0
-author: DSH
-repo: https://github.com/your-name/astrbot_plugin_resolve
+author: 桃薰
+repo: https://github.com/THUTAO-Tn/astrbot_plugin_resolve
 astrbot_version: ">=4.0.0"
 support_platforms:
   - aiocqhttp
