@@ -8,16 +8,14 @@
   绝不降级到 360P/720P。
 - 抖音 / 快手 / 小红书 / 微博 / 西瓜 / 今日头条等：第三方聚合解析接口
   （默认 https://video.zacao.top/api/parse）。
-- 解析完成后回复一张信息卡片，并给出两个一次性令牌：
-  `v:<令牌>` 取原视频/原图，`a:<令牌>` 取音频文件（B 站优先由 ffmpeg 输出 MP3）。
-- 每个按钮每条解析只能成功使用一次；默认仅发起人可用，结果默认缓存 2 小时。
+- 解析完成后直接发送原视频；B 站 DASH 音频会分离出来单独发送 MP3，
+  其他平台有独立音频地址时也会单独发送音频文件。
+- v1.1.0 起取消 `v:<令牌>` / `a:<令牌>` 按钮与一次性消费逻辑，不需要再回复令牌。
 
-与 GF 版的差异：AstrBot 插件 API 没有暴露 QQ 官方机器人的 Markdown 键盘回调，
-因此把 `.ka` 里的两个 `回调钮` 改成等价的文字令牌命令（GF 版在没有自定义键盘时
-也会自动补发 `回复 v:<令牌>` / `回复 a:<令牌>` 的提示）。其余解析/缓存/一次性
-消费/大小探测/转码逻辑保持一致。
+与 GF 版的差异：GF 版用两个键盘回调按钮让用户选择原视频/音频；AstrBot 版
+改为解析后自动发送，同时把音频从视频中分离出来单独发送。
 
-作者: DSH
+作者: 桃薰
 """
 
 from __future__ import annotations
@@ -68,7 +66,7 @@ URL_RE = re.compile(
     r"https?://[^\s<>\"'，。！？、；：）】》\u4e00-\u9fff]+",
     re.I,
 )
-TOKEN_RE = re.compile(r"^[0-9A-Za-z]{1,32}$")
+
 
 # 平台识别规则：与 GF 版 `视频解析.ka` / `video-core.mjs` 的平台正则保持一致。
 PLATFORM_RULES: list[tuple[str, str, re.Pattern[str]]] = [
@@ -128,10 +126,10 @@ class MediaInfo:
 
 @register(
     PLUGIN_NAME,
-    "DSH",
+    "桃薰",
     "多平台视频解析：B站原画 DASH 合并、抖音/快手/小红书等聚合解析，"
-    "解析后回复 v:/a: 令牌获取视频、图集与音频",
-    "1.0.0",
+    "解析后自动发送原视频并分离音频",
+    "1.1.0",
 )
 class ResolvePlugin(Star):
     """多平台视频解析插件。"""
@@ -145,7 +143,6 @@ class ResolvePlugin(Star):
 
         self._client: httpx.AsyncClient | None = None
         self._client_lock = asyncio.Lock()
-        self._locks: dict[str, asyncio.Lock] = {}
         self._ffmpeg: str | None = None  # None=未探测，""=不可用，其他=路径
         self._ffmpeg_lock = asyncio.Lock()
 
@@ -222,14 +219,12 @@ class ResolvePlugin(Star):
     # ------------------------------------------------------------------ #
     @filter.regex(
         r"^\s*[/／]?\s*(?:解析帮助|视频解析帮助|解析help)\s*$"
-        r"|^\s*[/／]?\s*[vV]:[0-9A-Za-z]+\s*$"
-        r"|^\s*[/／]?\s*[aA]:[0-9A-Za-z]+\s*$"
         r"|^\s*[/／]?\s*(?:解析|视频解析|解析视频)(?:\s|$)"
         r"|https?://"
         r"|^\s*(?:BV[0-9A-Za-z]{10}|av\d+)\s*$"
     )
     async def on_message(self, event: AstrMessageEvent) -> None:
-        """处理帮助、v:/a: 令牌回调、显式「解析」和裸链接。"""
+        """处理帮助、显式「解析」和裸链接；解析后自动发送视频与音频。"""
         try:
             text = (event.message_str or "").strip()
             # 兼容 AstrBot 用户习惯的 /指令 写法；message_str 已被平台唤醒阶段
@@ -241,18 +236,6 @@ class ResolvePlugin(Star):
             if text.lower() in ("解析帮助", "视频解析帮助", "解析help"):
                 self._claim_event(event)
                 await self._send_text(event, self._help_text())
-                return
-
-            match = re.fullmatch(r"[vV]:([0-9A-Za-z]+)", text)
-            if match:
-                self._claim_event(event)
-                await self._handle_video(event, match.group(1))
-                return
-
-            match = re.fullmatch(r"[aA]:([0-9A-Za-z]+)", text)
-            if match:
-                self._claim_event(event)
-                await self._handle_audio(event, match.group(1))
                 return
 
             explicit = bool(re.match(r"^\s*(?:解析|视频解析|解析视频)\s*", text))
@@ -313,29 +296,29 @@ class ResolvePlugin(Star):
             "解析 https://v.douyin.com/.../\n"
             "也可以直接发送链接。\n\n"
             "支持：B站、抖音、快手、小红书、微博、西瓜、今日头条、皮皮虾、微视等。\n\n"
-            "解析后会回复一张卡片，然后：\n"
-            "回复 v:<令牌>  获取原视频 / 原图\n"
-            "回复 a:<令牌>  获取音频文件（B站输出 MP3）\n"
-            "每个按钮每条解析只能点一次，默认仅发起人可用。\n\n"
+            "解析后会自动发送原视频；B站会额外把音频分离出来单独发送 MP3，\n"
+            "其他平台有独立音频地址时也会单独发送音频文件。\n"
+            "不需要再点按钮或回复令牌。\n\n"
             "B站：官方接口 + DASH 原画，ffmpeg -c copy 合并，不降分辨率/帧率；\n"
             "其他平台：聚合解析接口。"
         )
 
-    async def _send_card(self, event: AstrMessageEvent, cache: dict[str, Any]) -> None:
-        ok, error = await self._send_text(event, self._card_text(cache))
+    async def _send_caption(
+        self, event: AstrMessageEvent, cache: dict[str, Any]
+    ) -> None:
+        ok, error = await self._send_text(event, self._caption_text(cache))
         if not ok:
-            logger.warning(f"[{PLUGIN_NAME}] 发送解析卡片失败: {error}")
+            logger.warning(f"[{PLUGIN_NAME}] 发送解析信息失败: {error}")
             return
         cover = str(cache.get("cover") or "")
         if (
-            cover.startswith("http://")
-            or cover.startswith("https://")
-        ) and self._cfg_bool("send_cover", True):
+            cover.startswith("http://") or cover.startswith("https://")
+        ) and self._cfg_bool("send_cover", False):
             sent, error = await self._send_chain(event, [Comp.Image.fromURL(cover)])
             if not sent:
                 logger.debug(f"[{PLUGIN_NAME}] 封面发送失败（忽略）: {error}")
 
-    def _card_text(self, cache: dict[str, Any]) -> str:
+    def _caption_text(self, cache: dict[str, Any]) -> str:
         title = str(cache.get("title") or "未命名作品")
         title = title.replace("[", "［").replace("]", "］")
         lines = [f"🎬 {title}"]
@@ -359,14 +342,9 @@ class ResolvePlugin(Star):
 
         lines.append("")
         if self._has_video(cache):
-            lines.append(f"回复 v:{cache['token']} 获取原视频/原图")
+            lines.append("正在发送原视频…")
         if self._has_audio(cache):
-            lines.append(f"回复 a:{cache['token']} 获取音频文件")
-
-        hours = max(1, self._cfg_int("cache_hours", 2))
-        lines.append(f"每个按钮每条解析只能点一次，解析结果 {hours} 小时内有效。")
-        if self._cfg_bool("owner_only", True):
-            lines.append("（仅发起人可用）")
+            lines.append("音频将分离后单独发送。")
         return "\n".join(lines)
 
     @staticmethod
@@ -387,7 +365,9 @@ class ResolvePlugin(Star):
 
     @staticmethod
     def _has_audio(cache: dict[str, Any]) -> bool:
-        return bool(cache.get("audio_url")) or cache.get("platform_id") == "bilibili"
+        # 只有解析阶段确实拿到了音频地址才自动发送音频；
+        # B 站 DASH 音频地址会写入 audio_url。
+        return bool(cache.get("audio_url"))
 
     # ------------------------------------------------------------------ #
     # 发送封装
@@ -438,26 +418,41 @@ class ResolvePlugin(Star):
             await self._send_text(event, "解析失败：插件内部错误，请稍后重试或查看日志。")
             return
 
-        token = self._new_token()
+        # 只需要一个本次发送的短 ID 用于本地媒体文件名；不再生成用户令牌，
+        # 也不再写解析缓存。
+        session_id = self._new_session_id()
         cache = media.to_dict()
-        cache.update(
-            {
-                "token": token,
-                "created": int(time.time()),
-                "owner": event.get_sender_id(),
-                "session": event.unified_msg_origin,
-                "video_used": 0,
-                "audio_used": 0,
-            }
-        )
+        cache.update({"token": session_id, "created": int(time.time())})
         self._cleanup_cache()
+
+        await self._send_caption(event, cache)
+        await self._auto_send(event, cache)
+
+    async def _auto_send(
+        self, event: AstrMessageEvent, cache: dict[str, Any]
+    ) -> None:
+        """取消按钮后：解析完成立即发送原视频，并把音频分离出来单独发送。"""
         try:
-            self._save_cache(token, cache)
-        except OSError as exc:
-            logger.exception(f"[{PLUGIN_NAME}] 写缓存失败: {exc}")
-            await self._send_text(event, "解析成功，但缓存写入失败，请检查插件数据目录权限。")
+            ok, error = await self._deliver_video(event, cache)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(f"[{PLUGIN_NAME}] 自动发送视频失败: {exc}")
+            ok, error = False, f"视频发送失败：{exc}"
+        if not ok and self._has_video(cache):
+            await self._send_text(event, error or "视频发送失败，请稍后重试。")
+
+        if not cache.get("audio_url"):
             return
-        await self._send_card(event, cache)
+        try:
+            ok, error = await self._deliver_audio(event, cache)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(f"[{PLUGIN_NAME}] 自动发送音频失败: {exc}")
+            ok, error = False, f"音频发送失败：{exc}"
+        if not ok and "没有可提取的音频" not in (error or ""):
+            await self._send_text(event, error or "音频发送失败，请稍后重试。")
 
     async def _parse_media(
         self, url: str, platform_id: str, platform_name: str
@@ -508,59 +503,15 @@ class ResolvePlugin(Star):
         return None
 
     # ------------------------------------------------------------------ #
-    # 令牌 / 缓存
+    # 本地媒体文件
     # ------------------------------------------------------------------ #
-    def _new_token(self) -> str:
-        for _ in range(6):
-            token = secrets.token_hex(6)
-            if not (self.cache_dir / f"{token}.json").exists():
-                return token
-        return f"{int(time.time() * 1000):x}{secrets.token_hex(2)}"
-
-    def _cache_path(self, token: str) -> Path:
-        return self.cache_dir / f"{token}.json"
-
-    def _load_cache(self, token: str) -> dict[str, Any] | None:
-        if not TOKEN_RE.fullmatch(token):
-            return None
-        path = self._cache_path(token)
-        if not path.exists():
-            return None
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            logger.warning(f"[{PLUGIN_NAME}] 读取缓存失败 {path}: {exc}")
-            return None
-        return data if isinstance(data, dict) else None
-
-    def _save_cache(self, token: str, data: dict[str, Any]) -> None:
-        path = self._cache_path(token)
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        os.replace(tmp, path)
-
-    def _cache_expired(self, cache: dict[str, Any]) -> bool:
-        try:
-            created = float(cache.get("created") or 0)
-        except (TypeError, ValueError):
-            created = 0
-        if created <= 0:
-            return True
-        hours = max(1, self._cfg_int("cache_hours", 2))
-        return time.time() - created > hours * 3600
-
-    def _lock(self, token: str) -> asyncio.Lock:
-        lock = self._locks.get(token)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._locks[token] = lock
-        return lock
+    def _new_session_id(self) -> str:
+        """生成本次发送的短 ID，仅用于本地媒体文件名。"""
+        return f"{int(time.time() * 1000):x}{secrets.token_hex(4)}"
 
     def _cleanup_cache(self) -> None:
-        """清理过期解析缓存与孤儿媒体文件。"""
-        ttl = max(1, self._cfg_int("cache_hours", 2)) * 3600
+        """清理旧版 v1.0 的解析缓存与孤儿媒体文件。"""
+        ttl = 24 * 3600
         now = time.time()
         suffixes = (
             "-video.mp4",
@@ -585,7 +536,6 @@ class ResolvePlugin(Star):
             for suffix in suffixes:
                 (self.cache_dir / f"{token}{suffix}").unlink(missing_ok=True)
             path.unlink(missing_ok=True)
-            self._locks.pop(token, None)
 
         # 没有 JSON 引用的媒体文件最多保留 24 小时
         cutoff = now - 24 * 3600
@@ -603,59 +553,8 @@ class ResolvePlugin(Star):
                 pass
 
     # ------------------------------------------------------------------ #
-    # v: 原视频 / 原图
+    # 自动发送视频
     # ------------------------------------------------------------------ #
-    async def _handle_video(self, event: AstrMessageEvent, token: str) -> None:
-        cache = self._load_cache(token)
-        if cache is None:
-            await self._send_text(event, "这条解析结果已经失效，请重新发送视频链接解析。")
-            return
-        if self._cache_expired(cache):
-            await self._send_text(event, "这条解析结果已经过期，请重新发送视频链接解析。")
-            return
-        if self._cfg_bool("owner_only", True) and not self._owner_ok(event, cache):
-            await self._send_text(
-                event,
-                "这条解析结果只限发起人使用。\n如需自己获取，请发送原视频链接重新解析。",
-            )
-            return
-        async with self._lock(token):
-            cache = self._load_cache(token)
-            if cache is None:
-                await self._send_text(event, "这条解析结果已经失效，请重新发送视频链接解析。")
-                return
-            if cache.get("video_used"):
-                await self._send_text(
-                    event, "这个按钮已经用过了，每条解析每个按钮只能点一次。"
-                )
-                return
-
-            cache["video_used"] = 1
-            self._save_cache(token, cache)
-            try:
-                ok, error = await self._deliver_video(event, cache)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(f"[{PLUGIN_NAME}] 发送视频失败: {exc}")
-                ok, error = False, f"处理失败：{exc}"
-
-            if not ok:
-                cache["video_used"] = 0
-                try:
-                    self._save_cache(token, cache)
-                except OSError as exc:
-                    logger.warning(f"[{PLUGIN_NAME}] 回退视频已用标记失败: {exc}")
-                await self._send_text(event, error or "视频发送失败，请稍后重试。")
-
-    @staticmethod
-    def _owner_ok(event: AstrMessageEvent, cache: dict[str, Any]) -> bool:
-        owner = str(cache.get("owner") or "")
-        sender = str(event.get_sender_id() or "")
-        if owner and sender and owner != sender:
-            return False
-        return True
-
     async def _deliver_video(
         self, event: AstrMessageEvent, cache: dict[str, Any]
     ) -> tuple[bool, str]:
@@ -749,51 +648,8 @@ class ResolvePlugin(Star):
         )
 
     # ------------------------------------------------------------------ #
-    # a: 音频
+    # 自动发送分离音频
     # ------------------------------------------------------------------ #
-    async def _handle_audio(self, event: AstrMessageEvent, token: str) -> None:
-        cache = self._load_cache(token)
-        if cache is None:
-            await self._send_text(event, "这条解析结果已经失效，请重新发送视频链接解析。")
-            return
-        if self._cache_expired(cache):
-            await self._send_text(event, "这条解析结果已经过期，请重新发送视频链接解析。")
-            return
-        if self._cfg_bool("owner_only", True) and not self._owner_ok(event, cache):
-            await self._send_text(
-                event,
-                "这条解析结果只限发起人使用。\n如需自己获取，请发送原视频链接重新解析。",
-            )
-            return
-        async with self._lock(token):
-            cache = self._load_cache(token)
-            if cache is None:
-                await self._send_text(event, "这条解析结果已经失效，请重新发送视频链接解析。")
-                return
-            if cache.get("audio_used"):
-                await self._send_text(
-                    event, "这个按钮已经用过了，每条解析每个按钮只能点一次。"
-                )
-                return
-
-            cache["audio_used"] = 1
-            self._save_cache(token, cache)
-            try:
-                ok, error = await self._deliver_audio(event, cache)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(f"[{PLUGIN_NAME}] 发送音频失败: {exc}")
-                ok, error = False, f"处理失败：{exc}"
-
-            if not ok:
-                cache["audio_used"] = 0
-                try:
-                    self._save_cache(token, cache)
-                except OSError as exc:
-                    logger.warning(f"[{PLUGIN_NAME}] 回退音频已用标记失败: {exc}")
-                await self._send_text(event, error or "音频发送失败，请稍后重试。")
-
     async def _deliver_audio(
         self, event: AstrMessageEvent, cache: dict[str, Any]
     ) -> tuple[bool, str]:
@@ -1250,8 +1106,6 @@ class ResolvePlugin(Star):
             )
             return True, ""
 
-        await self._send_text(event, "正在准备 B 站原画视频，可能需要几十秒…")
-
         video_stream: dict[str, Any] | None = None
         audio_stream: dict[str, Any] | None = None
         try:
@@ -1341,7 +1195,6 @@ class ResolvePlugin(Star):
         if audio_stream is None:
             return False, "这个作品没有可提取的音频。"
 
-        await self._send_text(event, "正在提取音频，请稍等…")
         try:
             source = await self._download_bili_stream(audio_stream, token, "audioSrc")
         except ParseError as exc:
@@ -1402,6 +1255,10 @@ class ResolvePlugin(Star):
         if not urls:
             raise ParseError("B站没有返回下载地址")
         dest = self.cache_dir / f"{token}-{key}{suffix}"
+        # 同一次自动发送中，视频合并和音频导出会用到同一份 DASH 音轨，
+        # 已经下载成功就直接复用，避免重复下载。
+        if dest.exists() and dest.stat().st_size > 0:
+            return dest
         last_error: Exception | None = None
         for attempt in range(2):
             for url in urls:

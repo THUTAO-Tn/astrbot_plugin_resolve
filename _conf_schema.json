@@ -34,23 +34,6 @@
       "step": 1
     }
   },
-  "owner_only": {
-    "description": "仅发起人可用",
-    "type": "bool",
-    "hint": "开启时只有发起本次解析的人能使用 v:/a: 令牌；关闭后只要拿到令牌就能用（每个按钮仍只能成功一次）。",
-    "default": true
-  },
-  "cache_hours": {
-    "description": "解析结果有效期（小时）",
-    "type": "int",
-    "hint": "超时后令牌失效，需要重新解析。B站/抖音直链本身也有时效，建议 2 小时。",
-    "default": 2,
-    "slider": {
-      "min": 1,
-      "max": 24,
-      "step": 1
-    }
-  },
   "auto_parse_link": {
     "description": "直接发送链接也解析",
     "type": "bool",
@@ -58,10 +41,10 @@
     "default": true
   },
   "send_cover": {
-    "description": "解析卡片附带封面",
+    "description": "解析信息附带封面",
     "type": "bool",
-    "hint": "解析成功后额外发送一张封面图；关闭可减少被动回复条数。",
-    "default": true
+    "hint": "默认关闭。开启后会在视频/音频之前额外发一张封面图，QQ 被动回复条数会多一条。",
+    "default": false
   },
   "image_limit": {
     "description": "图集最多发送张数",

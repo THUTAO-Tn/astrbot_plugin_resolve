@@ -2,7 +2,7 @@ name: astrbot_plugin_resolve
 display_name: 多平台视频解析
 short_desc: 解析视频
 desc: 视频解析插件
-version: v1.0.0
+version: v1.1.0
 author: 桃薰
 repo: https://github.com/THUTAO-Tn/astrbot_plugin_resolve
 astrbot_version: ">=4.0.0"
