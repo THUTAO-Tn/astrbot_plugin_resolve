@@ -1,0 +1,128 @@
+{
+  "parse_api": {
+    "description": "第三方聚合解析接口",
+    "type": "string",
+    "hint": "需要支持 POST JSON {\"text\":\"链接\"}。默认 https://video.zacao.top/api/parse；返回字段按 video_url / source_video_url / image_list / audio_url / source_audio_url 读取。",
+    "default": "https://video.zacao.top/api/parse"
+  },
+  "parse_api_key": {
+    "description": "聚合解析接口 Key",
+    "type": "string",
+    "hint": "会以 X-API-Key 请求头发送。留空表示匿名调用（video.zacao.top 默认每 IP 每小时 30 次）。",
+    "default": "",
+    "secret": true
+  },
+  "video_limit_mb": {
+    "description": "第三方视频上传上限（MB）",
+    "type": "int",
+    "hint": "超过这个大小就不尝试上传，直接发视频直链。QQ 官方富媒体上限为 64MB，建议 60。",
+    "default": 60,
+    "slider": {
+      "min": 10,
+      "max": 64,
+      "step": 1
+    }
+  },
+  "bili_limit_mb": {
+    "description": "B站原画合并后上限（MB）",
+    "type": "int",
+    "hint": "B站原画 DASH 合并后超过这个大小，直接发 B站原页面链接；不会降级到 360P/720P。",
+    "default": 64,
+    "slider": {
+      "min": 10,
+      "max": 64,
+      "step": 1
+    }
+  },
+  "owner_only": {
+    "description": "仅发起人可用",
+    "type": "bool",
+    "hint": "开启时只有发起本次解析的人能使用 v:/a: 令牌；关闭后只要拿到令牌就能用（每个按钮仍只能成功一次）。",
+    "default": true
+  },
+  "cache_hours": {
+    "description": "解析结果有效期（小时）",
+    "type": "int",
+    "hint": "超时后令牌失效，需要重新解析。B站/抖音直链本身也有时效，建议 2 小时。",
+    "default": 2,
+    "slider": {
+      "min": 1,
+      "max": 24,
+      "step": 1
+    }
+  },
+  "auto_parse_link": {
+    "description": "直接发送链接也解析",
+    "type": "bool",
+    "hint": "开启时群里/私聊直接发链接（不写「解析」）也会触发；关闭后必须写「解析」或「视频解析」。",
+    "default": true
+  },
+  "send_cover": {
+    "description": "解析卡片附带封面",
+    "type": "bool",
+    "hint": "解析成功后额外发送一张封面图；关闭可减少被动回复条数。",
+    "default": true
+  },
+  "image_limit": {
+    "description": "图集最多发送张数",
+    "type": "int",
+    "hint": "小红书/抖音图集数量可能很多，建议 9 张以内；QQ 被动回复条数也有限。",
+    "default": 9,
+    "slider": {
+      "min": 1,
+      "max": 9,
+      "step": 1
+    }
+  },
+  "ffmpeg_path": {
+    "description": "ffmpeg 路径",
+    "type": "string",
+    "hint": "留空自动查找 PATH、C:\\ffmpeg\\bin\\ffmpeg.exe 等常见位置；也可填写绝对路径。B站原画合并和 MP3 导出依赖 ffmpeg。",
+    "default": ""
+  },
+  "convert_api": {
+    "description": "备用 m4a→mp3 转码接口（可选）",
+    "type": "string",
+    "hint": "留空则只用本机 ffmpeg；如仍想使用 GF 包里的 Node 转码服务，可填 http://127.0.0.1:18080/convert。",
+    "default": ""
+  },
+  "bili_cookie": {
+    "description": "B站 Cookie（可选）",
+    "type": "string",
+    "hint": "B站接口返回 412 时可填浏览器登录后的 Cookie。只建议填自己的账号 Cookie，注意保管。",
+    "default": "",
+    "secret": true
+  },
+  "request_timeout": {
+    "description": "HTTP 请求超时（秒）",
+    "type": "int",
+    "default": 30,
+    "slider": {
+      "min": 10,
+      "max": 120,
+      "step": 5
+    }
+  },
+  "download_timeout": {
+    "description": "媒体下载超时（秒）",
+    "type": "int",
+    "default": 300,
+    "slider": {
+      "min": 60,
+      "max": 900,
+      "step": 30
+    }
+  },
+  "ua": {
+    "description": "User-Agent",
+    "type": "string",
+    "hint": "请求 B站接口、下载媒体时使用的 UA。一般不需要改。",
+    "default": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+  },
+  "proxy": {
+    "description": "HTTP 代理（可选）",
+    "type": "string",
+    "hint": "如 http://127.0.0.1:7890。国内直连一般不需要。",
+    "default": ""
+  }
+}
